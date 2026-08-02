@@ -1,15 +1,29 @@
 ---
 name: create-ios-app
-description: Create production-ready iOS apps with Swift and SwiftUI using MVVM, @Observable, modern concurrency, HIG-compliant design, and WidgetKit. Use when scaffolding a new iOS app, adding SwiftUI screens, setting up project structure, or when the user mentions iOS, SwiftUI, UIKit, Xcode, widgets, or Apple app development. Always begins with a discovery and planning phase before writing any code.
+description: Create or modify iOS apps with Swift and SwiftUI. Handles both new apps (full scaffold from scratch) and existing apps (refactor/recode). Use when the user mentions iOS, SwiftUI, UIKit, Xcode, widgets, or Apple app development. Automatically detects whether the repo already has Swift code and routes to the correct workflow.
 ---
 
 # Create iOS App
 
-**Always run Discovery → Plan → Implement in that order. Never skip to code.**
+**Step 0 — Detect mode before doing anything else.**
 
 ---
 
-## Phase 1 — Discovery (ask before writing any code)
+## Step 0 — New app or existing app?
+
+Scan the current workspace for Swift source files (`.swift`) before responding.
+
+| What you find | Mode | What to do |
+|---------------|------|------------|
+| No `.swift` files — empty or non-Swift repo | **New App** | Continue with Phase 1 below |
+| `.swift` files exist | **Existing App** | Stop. Use the `refactor-ios-app` skill instead |
+
+If you cannot scan the workspace (e.g. no filesystem access), ask the user directly:
+> "Is this a brand-new app or an existing codebase?"
+
+---
+
+## Phase 1 — Discovery (new apps only — ask before writing any code)
 
 Ask all of the following before scaffolding anything:
 
