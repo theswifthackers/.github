@@ -1,228 +1,285 @@
 ---
 name: create-ios-app
-description: Create production-ready iOS apps with Swift and SwiftUI using MVVM, modern Apple APIs, and Human Interface Guidelines. Use when scaffolding a new iOS app, adding SwiftUI screens, setting up Xcode project structure, or when the user mentions iOS, SwiftUI, UIKit, Xcode, or Apple app development.
+description: Create production-ready iOS apps with Swift and SwiftUI using MVVM, @Observable, modern concurrency, HIG-compliant design, and WidgetKit. Use when scaffolding a new iOS app, adding SwiftUI screens, setting up project structure, or when the user mentions iOS, SwiftUI, UIKit, Xcode, widgets, or Apple app development. Always begins with a discovery and planning phase before writing any code.
 ---
 
 # Create iOS App
 
-Build iOS apps with **Swift + SwiftUI** by default. Prefer UIKit only when the user asks or when a required API has no SwiftUI equivalent.
+**Always run Discovery → Plan → Implement in that order. Never skip to code.**
 
-## Quick start checklist
+---
+
+## Phase 1 — Discovery (ask before writing any code)
+
+Ask all of the following before scaffolding anything:
+
+1. **What does the app do?** One or two sentences. What problem does it solve, and for whom?
+2. **What are the core features?** List every screen or major capability (e.g. "list of items, detail view, favorites, settings, push notifications").
+3. **What platform(s)?** iPhone only, iPhone + iPad, or all Apple platforms?
+4. **What integrations does it need?** (Login, camera, location, maps, payments, widgets, notifications, local data, remote API, etc.)
+5. **Is there a design direction?** Colours, brand, any existing screenshots or references?
+6. **Minimum iOS version?** Default is iOS 17 unless the user needs iOS 26 / Swift 6 strict concurrency.
+
+Only proceed once you have enough answers to produce a meaningful plan. If the user is vague, make reasonable assumptions and state them explicitly in the plan.
+
+---
+
+## Phase 2 — App Plan (produce before writing any code)
+
+Output a short structured plan in this format:
 
 ```
-Task Progress:
-- [ ] Clarify app purpose, platforms (iPhone / iPad / Mac), and min iOS version
-- [ ] Scaffold project structure (App → Features → Core → Resources)
-- [ ] Define data models and navigation
-- [ ] Implement screens with SwiftUI + MVVM
-- [ ] Wire networking / persistence / permissions as needed
-- [ ] Add previews, basic tests, and accessibility
-- [ ] Verify build settings, Info.plist keys, and assets
+## App Plan: <App Name>
+
+### Purpose
+<One sentence>
+
+### Target Platform
+<iPhone / iPhone + iPad / etc.>, iOS <version>+
+
+### Features
+1. <Feature name> — <what it does>
+2. ...
+
+### Screen List
+- <Screen name> (<purpose>)
+- ...
+
+### Key Integrations
+- <Integration> — <why>
+
+### Architecture
+- Pattern: MVVM + @Observable
+- Navigation: NavigationStack (+ TabView if multi-tab)
+- Persistence: <SwiftData / AppStorage / URLSession>
+- Concurrency: async/await + @MainActor
+
+### Project Structure (folder tree)
+<abbreviated tree>
+
+### Open Questions / Assumptions
+- <assumption>
 ```
 
-## Defaults (unless user overrides)
+Get explicit or implicit confirmation before writing code. You may start immediately after presenting the plan if the user says "go ahead" or similar.
 
-| Choice | Default |
-|--------|---------|
+---
+
+## Defaults (override only when user requests)
+
+| Concern | Default |
+|---------|---------|
 | UI | SwiftUI |
-| Architecture | MVVM + unidirectional data flow |
-| Min deployment | iOS 17+ |
-| Concurrency | `async` / `await` + `@MainActor` for UI state |
-| Persistence | SwiftData for local; URLSession for remote |
+| Architecture | MVVM + `@Observable` |
+| Concurrency | `async/await` + `@MainActor` on all UI-bound VMs |
+| Min deployment | iOS 17 |
+| Persistence | SwiftData (local) / URLSession (remote) |
 | Navigation | `NavigationStack` + value-based routing |
 | Package manager | Swift Package Manager |
-| Previews | `#Preview` on every screen |
+| Third-party deps | None unless user asks |
 
-## Discovery questions
+---
 
-Ask only what blocks scaffolding. Infer the rest:
+## Swift Language Rules
 
-1. What does the app do in one sentence?
-2. iPhone only, or iPhone + iPad?
-3. Needs login, networking, maps, camera, or offline storage?
-4. Any existing design / brand constraints?
+These come from battle-tested production patterns. Apply them to every file you write:
 
-If answers are missing, scaffold a clean SwiftUI starter with a home screen, settings stub, and clear TODO markers.
+### Always use modern API
 
-## Project structure
+| ❌ Old / wrong | ✅ Modern |
+|----------------|-----------|
+| `foregroundColor()` | `foregroundStyle()` |
+| `cornerRadius()` | `clipShape(.rect(cornerRadius:))` |
+| `tabItem()` | `Tab` initializer (iOS 18+) |
+| `NavigationView` | `NavigationStack` |
+| `ObservableObject` + `@Published` | `@Observable` class |
+| `@StateObject` / `@ObservedObject` | `@State` + `@Observable` |
+| `DispatchQueue.main.async` | `await MainActor.run` or `@MainActor` |
+| `DateFormatter` / `NumberFormatter` | `.formatted()` / `FormatStyle` |
+| `Task.sleep(nanoseconds:)` | `Task.sleep(for:)` |
+| `UIScreen.main.bounds` | `GeometryReader` → prefer `containerRelativeFrame()` |
+| `GeometryReader` | `containerRelativeFrame()` or `visualEffect()` when sufficient |
+| `onTapGesture` for actions | `Button` (reserve `onTapGesture` for location/count needs) |
+| `onChange(of:) { v in }` (1-param) | `onChange(of:) { old, new in }` |
+| `AnyView` | Concrete `View` types or generics |
+| `fontWeight(.bold)` | `bold()` |
+| `showsIndicators: false` in ScrollView | `.scrollIndicators(.hidden)` |
+| `Array(seq.enumerated())` in ForEach | `ForEach(seq.enumerated(), id: \.element.id)` |
+| `UIGraphicsImageRenderer` for SwiftUI | `ImageRenderer` |
+
+### Concurrency
+- All `@Observable` classes must be `@MainActor` unless you have a specific reason.
+- Never use `DispatchQueue`, `NSLock`, or other GCD primitives for new code.
+- Use `actor` for shared mutable state accessed from multiple concurrent contexts.
+- Use `.task { }` modifier for view-lifecycle async work, not `onAppear`.
+
+### Formatting & strings
+- Never use `String(format:)` for numbers — use `Text(value, format: .number)`.
+- Filter user-input text with `localizedStandardContains()`, not `contains()`.
+- Use `URL.documentsDirectory` and `appending(path:)`.
+- Avoid force unwraps; use `guard let` or `try?` with explicit fallbacks.
+
+### Code organisation
+- One type per file.
+- No computed-property sub-views — break into `View` structs.
+- Add `#Preview` to every screen.
+
+---
+
+## Project Structure
 
 ```
 AppName/
-├── AppNameApp.swift          # @main entry
-├── ContentView.swift         # Root shell / tab host
+├── AppNameApp.swift           # @main, WindowGroup, modelContainer
+├── ContentView.swift          # Root tab host or NavigationStack shell
 ├── Features/
-│   ├── Home/
-│   │   ├── HomeView.swift
-│   │   └── HomeViewModel.swift
+│   ├── FeatureName/
+│   │   ├── FeatureNameView.swift
+│   │   └── FeatureNameViewModel.swift
 │   └── Settings/
 │       └── SettingsView.swift
 ├── Core/
-│   ├── Models/
-│   ├── Services/             # Networking, persistence, system APIs
-│   ├── Components/           # Reusable UI pieces
-│   └── Theme/                # Colors, typography, spacing
+│   ├── Models/                # @Model / Codable value types
+│   ├── Services/              # Networking, persistence, system APIs
+│   ├── Components/            # Reusable SwiftUI pieces
+│   └── Theme/                 # Color tokens, Typography, Spacing
 ├── Resources/
 │   ├── Assets.xcassets
 │   └── Localizable.xcstrings
-└── Info.plist                # Only when custom keys are required
+└── Info.plist                 # Only for custom capability keys
 ```
 
-Keep feature folders vertical: view + view model + feature-specific models stay together.
+Keep features vertical: view + view model + feature-specific models stay together.
 
-## Implementation rules
+---
 
-### SwiftUI views
-
-- Views are declarative and side-effect free; put logic in the view model or services.
-- Prefer small composed views over one giant body.
-- Use `@State` for view-local UI; `@StateObject` / `@Observable` for owned view models; `@Environment` for shared dependencies.
-- Prefer `@Observable` (Observation framework) over `ObservableObject` for new code on iOS 17+.
-- Always provide `#Preview` with sample data.
+## MVVM Pattern
 
 ```swift
-import SwiftUI
-
-struct HomeView: View {
-    @State private var viewModel = HomeViewModel()
-
-    var body: some View {
-        NavigationStack {
-            List(viewModel.items) { item in
-                Text(item.title)
-            }
-            .navigationTitle("Home")
-            .task { await viewModel.load() }
-        }
-    }
-}
-
-#Preview {
-    HomeView()
-}
-```
-
-### View models
-
-- Mark UI-facing view models `@MainActor`.
-- Expose ready-to-render state, not raw networking types.
-- Handle loading / empty / error states explicitly.
-
-```swift
-import Foundation
-
+// ViewModel
 @MainActor
 @Observable
 final class HomeViewModel {
     private(set) var items: [Item] = []
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    private let service: ItemServiceProtocol
+
+    init(service: ItemServiceProtocol = ItemService.shared) {
+        self.service = service
+    }
 
     func load() async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
-        do {
-            items = try await ItemService.shared.fetchItems()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        do { items = try await service.fetchItems() }
+        catch { errorMessage = error.localizedDescription }
+    }
+}
+
+// View
+struct HomeView: View {
+    @State private var viewModel = HomeViewModel()
+
+    var body: some View {
+        List(viewModel.items) { item in Text(item.title) }
+            .task { await viewModel.load() }
     }
 }
 ```
 
-### Networking
+Always expose three states on data screens: **loading**, **empty**, **error**. See `templates.md` for the `AsyncContentView` wrapper.
 
-- Use `URLSession` + `async/await`.
-- Decode with `Codable`.
-- Centralize base URL, auth headers, and error mapping in a service layer.
-- Never block the main thread.
+---
 
-### Persistence
+## Design Rules (summary — see design.md for full details)
 
-- **SwiftData** for local models and queries.
-- **AppStorage** / `UserDefaults` for lightweight preferences only.
-- Do not invent a Core Data stack unless the user asks or SwiftData cannot cover the need.
+- **Spacing**: use a 4/8-pt grid only. Allowed values: `4 8 12 16 20 24 32 40 48`. Never arbitrary values.
+- **Typography**: five or fewer distinct font sizes; one `design` variant throughout (including widgets).
+- **Colors**: use semantic system colors (`Color(.systemBackground)`, `.secondary`, `.tertiary`). Avoid hardcoded hex or `Color.white.opacity(0.32)` soup.
+- **Cards/groups**: `Color(.secondarySystemBackground)` + `clipShape(.rect(cornerRadius: 10))`. Never gradients or decorative borders on standard cards.
+- **Corner radius**: 10 pt for cards/groups. Only go higher for explicitly pill-shaped or branded surfaces.
+- **Dividers**: `Divider().padding(.leading, 16)`. Never build custom divider views.
+- **NavigationStack**: always — never bare `ZStack` as a navigation root.
+- **Dynamic Type**: don't force fixed font sizes for body text. Use `.body`, `.caption`, etc.
+- **Dark Mode**: use semantic colors; they adapt automatically.
+- **SF Symbols**: prefer over custom icons; pair with text in buttons (`Button("Label", systemImage: "icon")`).
 
-### Navigation
+---
 
-```swift
-enum Route: Hashable {
-    case detail(Item.ID)
-    case settings
-}
+## Interface Writing Rules (summary — see writing-for-interfaces.md for full details)
 
-NavigationStack(path: $path) {
-    HomeView()
-        .navigationDestination(for: Route.self) { route in
-            switch route {
-            case .detail(let id): DetailView(itemID: id)
-            case .settings: SettingsView()
-            }
-        }
-}
-```
+- **Purpose first**: every screen has one primary message; everything else is secondary.
+- **Anticipate next steps**: after an error → tell them how to fix it. After a success → point forward.
+- **Be specific**: "Can't open 'Report.pdf'" not "Can't open this file."
+- **Remove filler**: "Simply tap…" → "Tap…". No "Oops!", no "Successfully saved".
+- **Consistent terminology**: pick one word per concept, use it everywhere (not "alias" then "username").
+- **Button copy**: name the action — "Cancel Subscription", not "Yes".
+- **Error messages**: lead with what went wrong, then how to recover.
 
-### Permissions & Info.plist
+---
 
-Add usage descriptions only for APIs you actually call:
+## Accessibility
 
-| Capability | Info.plist key |
-|------------|----------------|
+- Add `.accessibilityLabel` where icon-only buttons lack text.
+- Support Dynamic Type; test at largest accessibility size.
+- Provide `.accessibilityElement(children: .combine)` for composite cells.
+- Respect `@Environment(\.accessibilityReduceMotion)` in animations.
+- Color is not the only differentiator for status (add shape or label).
+
+---
+
+## Widgets (WidgetKit) — see widgets.md for full details
+
+Only add a Widget extension when explicitly requested. Key rules at a glance:
+
+- Use an App Group for data shared between app and widget.
+- Never read `UserDefaults.standard` in the extension — always `UserDefaults(suiteName:)`.
+- Never use `onTapGesture` in widgets — only `Button(intent:)` / `Toggle(intent:)`.
+- Always call `WidgetCenter.shared.reloadTimelines(ofKind:)` after mutations.
+- Always add `containerBackground(.fill.tertiary, for: .widget)`.
+- Lock Screen circular widgets → use `Gauge` with `.accessoryCircular`, not manual circles.
+- Match timeline refresh rate to data granularity (midnight for daily data; not every minute).
+
+---
+
+## Permissions & Info.plist
+
+Add usage descriptions only for APIs you call:
+
+| Capability | Key |
+|------------|-----|
 | Camera | `NSCameraUsageDescription` |
 | Photo library | `NSPhotoLibraryUsageDescription` |
 | Location when in use | `NSLocationWhenInUseUsageDescription` |
 | Microphone | `NSMicrophoneUsageDescription` |
 | Face ID | `NSFaceIDUsageDescription` |
 
-Write clear, human purpose strings — App Review rejects vague copy.
+Write plain human-readable purpose strings. App Review rejects vague copy.
 
-### Accessibility & polish
+---
 
-- Use `Label` / SF Symbols where possible.
-- Support Dynamic Type; avoid fixed font sizes for body text.
-- Add `.accessibilityLabel` when icons lack text.
-- Respect safe areas; test on a small phone width (e.g. iPhone SE) and a large phone.
-- Prefer system colors / semantic colors unless brand tokens are provided.
+## Deliverables Checklist
 
-### Testing
+When asked to create an app, always produce:
 
-- Unit-test view models and services.
-- Use SwiftUI previews as the first visual check.
-- Add a UI test only for critical flows (launch → primary action).
+- [ ] `README.md` with: open-in-Xcode steps, min iOS version, feature list, required permissions, API key / bundle ID TODOs
+- [ ] Full folder structure with compiling Swift sources
+- [ ] `#Preview` on every screen
+- [ ] `Assets.xcassets` with AppIcon placeholder structure
+- [ ] Explicit `// TODO: replace with your Bundle ID / Team ID` markers
+- [ ] No hardcoded secrets, API keys, or provisioning profiles
 
-## Design direction
+---
 
-When building UI from scratch (no existing design system):
+## Supporting files
 
-- Follow Apple HIG: clarity, deference, depth.
-- Use SF Pro via system fonts; pair with SF Symbols.
-- Prefer native controls (`List`, `Form`, `NavigationStack`, `TabView`) over custom chrome.
-- One primary action per screen.
-- Avoid generic “AI slop” aesthetics (purple gradients, glowing cards, emoji-as-icons).
-
-For brand / marketing surfaces inside the app, still keep native iOS patterns for interactive flows (forms, settings, lists).
-
-## Xcode / tooling notes
-
-- Target a single app product first; add widgets, App Clips, or watch later.
-- Use SPM for dependencies; pin versions intentionally.
-- Prefer Xcode 15+ project format and folder-synced groups when available.
-- Simulator is fine for most UI work; note when device-only APIs (push, camera, NFC) need a physical device.
-- This environment may lack macOS/Xcode — still produce complete Swift sources and project layout the user can open on a Mac.
-
-## Deliverables for a new app
-
-When asked to create an app, ship:
-
-1. Folder structure above with compiling Swift sources
-2. `README.md` with open-in-Xcode steps, min iOS version, and features
-3. Asset placeholders (AppIcon set structure) when relevant
-4. Clear TODOs for signing, bundle ID, and team ID (user-specific)
-
-Do **not** invent fake certificates, provisioning profiles, or API keys.
-
-## Additional resources
-
-- Architecture patterns and layering: [architecture.md](architecture.md)
-- Starter screen templates: [templates.md](templates.md)
-- Common Apple API recipes: [api-recipes.md](api-recipes.md)
+| File | What's inside |
+|------|---------------|
+| [architecture.md](architecture.md) | MVVM layering, DI, state patterns, anti-patterns |
+| [templates.md](templates.md) | Starter SwiftUI screens (tabs, list/detail, forms, async states) |
+| [api-recipes.md](api-recipes.md) | SwiftData, Photos, location, keychain, push, App Store checklist |
+| [design.md](design.md) | Full HIG, spacing grid, typography, colors, components, widget design |
+| [widgets.md](widgets.md) | Full WidgetKit reference: providers, families, Controls, Live Activities |
+| [writing-for-interfaces.md](writing-for-interfaces.md) | Voice, tone, copy principles, editing craft |

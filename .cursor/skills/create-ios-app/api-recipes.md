@@ -1,56 +1,63 @@
 # Common Apple API Recipes
 
-Minimal patterns for frequent iOS capabilities. Add Info.plist usage strings when required.
+Drop-in patterns for frequent iOS capabilities.
 
-## SwiftData list
+---
+
+## SwiftData (local persistence)
 
 ```swift
 import SwiftData
-import SwiftUI
 
 @Model
 final class Note {
     var title: String
+    var body: String
     var createdAt: Date
 
-    init(title: String, createdAt: Date = .now) {
+    init(title: String, body: String = "", createdAt: Date = .now) {
         self.title = title
+        self.body = body
         self.createdAt = createdAt
     }
 }
 
-// In App:
-// WindowGroup { ContentView() }
-//     .modelContainer(for: Note.self)
+// App entry
+@main
+struct NoteApp: App {
+    var body: some Scene {
+        WindowGroup { ContentView() }
+            .modelContainer(for: Note.self)
+    }
+}
 
+// View
 struct NotesView: View {
     @Environment(\.modelContext) private var context
     @Query(sort: \Note.createdAt, order: .reverse) private var notes: [Note]
-    @State private var draft = ""
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(notes) { note in
-                    Text(note.title)
-                }
-                .onDelete { indexSet in
-                    indexSet.map { notes[$0] }.forEach(context.delete)
-                }
-            }
-            .navigationTitle("Notes")
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button("Add", systemImage: "plus") {
-                        context.insert(Note(title: draft.isEmpty ? "New Note" : draft))
-                        draft = ""
-                    }
+        List {
+            ForEach(notes) { note in Text(note.title) }
+                .onDelete { indexSet in indexSet.map { notes[$0] }.forEach(context.delete) }
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Add Note", systemImage: "plus") {
+                    context.insert(Note(title: "New Note"))
                 }
             }
         }
     }
 }
 ```
+
+CloudKit + SwiftData notes:
+- Never use `@Attribute(.unique)` when CloudKit sync is enabled.
+- All model properties must have default values or be optional.
+- All relationships must be optional.
+
+---
 
 ## Photos picker
 
@@ -63,19 +70,24 @@ struct AvatarPickerView: View {
     @State private var image: Image?
 
     var body: some View {
-        VStack {
+        VStack(spacing: 16) {
             if let image {
                 image
                     .resizable()
                     .scaledToFill()
                     .frame(width: 120, height: 120)
                     .clipShape(Circle())
+            } else {
+                Circle()
+                    .fill(Color(.secondarySystemBackground))
+                    .frame(width: 120, height: 120)
+                    .overlay { Image(systemName: "person.fill").foregroundStyle(.tertiary) }
             }
             PhotosPicker("Choose Photo", selection: $selection, matching: .images)
         }
         .onChange(of: selection) { _, newValue in
             Task {
-                guard let data = try await newValue?.loadTransferable(type: Data.self),
+                guard let data = try? await newValue?.loadTransferable(type: Data.self),
                       let uiImage = UIImage(data: data) else { return }
                 image = Image(uiImage: uiImage)
             }
@@ -84,9 +96,11 @@ struct AvatarPickerView: View {
 }
 ```
 
-Requires `NSPhotoLibraryUsageDescription` only for broader library access; limited picker often needs no prompt — still document intent in README.
+---
 
 ## Location (when in use)
+
+Info.plist: `NSLocationWhenInUseUsageDescription`
 
 ```swift
 import CoreLocation
@@ -96,7 +110,7 @@ import CoreLocation
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private let manager = CLLocationManager()
     private(set) var coordinate: CLLocationCoordinate2D?
-    private(set) var authorization = CLAuthorizationStatus.notDetermined
+    private(set) var authorizationStatus = CLAuthorizationStatus.notDetermined
 
     override init() {
         super.init()
@@ -104,54 +118,173 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
     }
 
-    func request() {
+    func requestPermission() {
         manager.requestWhenInUseAuthorization()
-        manager.startUpdatingLocation()
     }
 
-    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        Task { @MainActor in
-            self.coordinate = location.coordinate
-        }
+    func start() { manager.startUpdatingLocation() }
+    func stop() { manager.stopUpdatingLocation() }
+
+    nonisolated func locationManager(_ manager: CLLocationManager,
+                                     didUpdateLocations locations: [CLLocation]) {
+        guard let loc = locations.last else { return }
+        Task { @MainActor in self.coordinate = loc.coordinate }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         let status = manager.authorizationStatus
-        Task { @MainActor in
-            self.authorization = status
+        Task { @MainActor in self.authorizationStatus = status }
+    }
+}
+```
+
+---
+
+## Push notifications (local scheduling)
+
+```swift
+import UserNotifications
+
+func scheduleNotification(title: String, body: String, seconds: TimeInterval) async throws {
+    let center = UNUserNotificationCenter.current()
+    let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+    guard granted else { return }
+
+    let content = UNMutableNotificationContent()
+    content.title = title
+    content.body = body
+    content.sound = .default
+
+    let trigger = UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+    let request = UNNotificationRequest(identifier: UUID().uuidString,
+                                        content: content, trigger: trigger)
+    try await center.add(request)
+}
+```
+
+Remote push (high-level):
+1. Add Push Notifications capability.
+2. Call `UIApplication.shared.registerForRemoteNotifications()`.
+3. Receive device token in `AppDelegate.application(_:didRegisterForRemoteNotificationsWithDeviceToken:)`.
+4. Send token to your backend.
+5. Physical device required — simulator has limited push support.
+
+Do not include APNs auth keys or certificates in the repository.
+
+---
+
+## Keychain storage (secrets)
+
+Never store tokens in `UserDefaults`. Use Keychain via a simple wrapper:
+
+```swift
+import Security
+
+enum KeychainError: Error { case saveFailed, loadFailed, deleteFailed }
+
+struct Keychain {
+    static func save(_ value: String, for key: String) throws {
+        let data = Data(value.utf8)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: data
+        ]
+        SecItemDelete(query as CFDictionary)
+        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else {
+            throw KeychainError.saveFailed
+        }
+    }
+
+    static func load(for key: String) throws -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let string = String(data: data, encoding: .utf8) else {
+            throw KeychainError.loadFailed
+        }
+        return string
+    }
+
+    static func delete(for key: String) throws {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key
+        ]
+        guard SecItemDelete(query as CFDictionary) == errSecSuccess else {
+            throw KeychainError.deleteFailed
         }
     }
 }
 ```
 
-Add `NSLocationWhenInUseUsageDescription`.
+API keys for debug builds: use `.xcconfig` files (gitignored), not hardcoded constants.
 
-## Keychain-friendly secrets
+---
 
-- Never store API tokens in source control or `UserDefaults`.
-- Prefer the Keychain (via a small wrapper or Apple’s Generic Password APIs) for session secrets.
-- Use Xcode schemes / `.xcconfig` (gitignored) for debug-only base URLs when needed.
+## Date & number formatting (modern API only)
 
-## Push notifications (high level)
+```swift
+// Dates — never use DateFormatter
+Date.now.formatted(date: .abbreviated, time: .shortened)        // "Aug 2, 2026 at 9:00 AM"
+Date.now.formatted(.relative(presentation: .named))             // "2 hours ago"
+Date(someString, strategy: .iso8601)                            // parse
 
-1. Capability: Push Notifications in Xcode
-2. Request authorization with `UNUserNotificationCenter`
-3. Register for remote notifications; send device token to backend
-4. Physical device required for reliable remote push testing
+// Numbers — never use NumberFormatter
+let price = 12.99
+Text(price, format: .currency(code: "USD"))                     // "$12.99"
+Text(1_234_567, format: .number)                                // "1,234,567"
+Text(0.752, format: .percent.precision(.fractionLength(1)))     // "75.2%"
+Text(count, format: .number)                                    // never String(format: "%d", count)
+```
 
-Do not invent APNs keys or certificates in the repo.
+---
 
-## Widgets
+## Haptic feedback
 
-Only add a Widget Extension when the user asks. Share models via a small local package or shared group folder; keep the first version read-only timeline based on existing app data.
+```swift
+import UIKit
+
+enum HapticFeedback {
+    static func impact(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        UIImpactFeedbackGenerator(style: style).impactOccurred()
+    }
+
+    static func notification(_ type: UINotificationFeedbackGenerator.FeedbackType) {
+        UINotificationFeedbackGenerator().notificationOccurred(type)
+    }
+
+    static func selection() {
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+}
+
+// Usage
+HapticFeedback.impact(.medium)
+HapticFeedback.notification(.success)
+```
+
+---
 
 ## App Store readiness checklist
 
-- [ ] Unique bundle identifier placeholder documented in README
-- [ ] App icon slots present (even if placeholder)
-- [ ] Launch screen / first frame is not a dead white screen
-- [ ] Privacy usage strings match real APIs
-- [ ] No hardcoded secrets
-- [ ] Dark Mode looks intentional
-- [ ] Dynamic Type does not clip primary UI
+Before shipping:
+
+- [ ] Unique bundle identifier (not `com.example.*`)
+- [ ] App icon — all required slots filled (no missing sizes)
+- [ ] Launch screen is not blank white on first frame
+- [ ] Privacy usage description strings match APIs actually used
+- [ ] No hardcoded API keys, tokens, or certificates
+- [ ] Dark Mode renders intentionally (not broken)
+- [ ] Dynamic Type does not clip primary content at accessibility sizes
+- [ ] VoiceOver traversal order makes sense for key screens
+- [ ] All Info.plist capability keys have human-readable purpose strings
+- [ ] `NSAppTransportSecurity` exceptions only for domains that require them
+- [ ] No calls to private/undocumented Apple APIs
+- [ ] Crash-free on oldest supported device / iOS version
