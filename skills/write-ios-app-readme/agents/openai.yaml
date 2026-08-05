@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write iOS App README"
+  short_description: "Create a polished README for an iOS app"
+  default_prompt: "Use $write-ios-app-readme to create or refresh this iOS app repository README."
