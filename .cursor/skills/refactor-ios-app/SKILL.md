@@ -285,3 +285,6 @@ The following files from the `create-ios-app` skill apply equally here:
 | Common API recipes | `../create-ios-app/api-recipes.md` |
 | WidgetKit | `../create-ios-app/widgets.md` |
 | Interface writing | `../create-ios-app/writing-for-interfaces.md` |
+| App Store Review Guidelines | `../review-ios-app/SKILL.md` |
+
+If the user wants a submission / rejection-risk review rather than a recode, stop and use `review-ios-app`.
