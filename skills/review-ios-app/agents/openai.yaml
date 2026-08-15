@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review iOS App (App Store)"
+  short_description: "Review an Apple app against App Store Review Guidelines"
+  default_prompt: "Use $review-ios-app to review this app against Apple's App Store Review Guidelines. Report what it lacks and suggest revisions."

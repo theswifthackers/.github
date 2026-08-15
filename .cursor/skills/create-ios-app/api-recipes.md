@@ -274,12 +274,14 @@ HapticFeedback.notification(.success)
 
 ## App Store readiness checklist
 
-Before shipping:
+Before shipping (quality bar). For a full guideline review with citations and revisions, use the `review-ios-app` skill.
 
 - [ ] Unique bundle identifier (not `com.example.*`)
 - [ ] App icon — all required slots filled (no missing sizes)
 - [ ] Launch screen is not blank white on first frame
 - [ ] Privacy usage description strings match APIs actually used
+- [ ] Privacy policy linked in-app; `PrivacyInfo.xcprivacy` present if required-reason APIs are used
+- [ ] Account creation includes in-app account deletion; third-party social login includes Sign in with Apple when 4.8 applies
 - [ ] No hardcoded API keys, tokens, or certificates
 - [ ] Dark Mode renders intentionally (not broken)
 - [ ] Dynamic Type does not clip primary content at accessibility sizes
@@ -288,3 +290,4 @@ Before shipping:
 - [ ] `NSAppTransportSecurity` exceptions only for domains that require them
 - [ ] No calls to private/undocumented Apple APIs
 - [ ] Crash-free on oldest supported device / iOS version
+- [ ] Demo account or demo mode ready if anything is behind login

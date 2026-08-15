@@ -17,6 +17,7 @@ Scan the current workspace for Swift source files (`.swift`) before responding.
 |---------------|------|------------|
 | No `.swift` files — empty or non-Swift repo | **New App** | Continue with Phase 1 below |
 | `.swift` files exist | **Existing App** | Stop. Use the `refactor-ios-app` skill instead |
+| User wants App Store / guideline review | **Review** | Stop. Use the `review-ios-app` skill instead |
 
 If you cannot scan the workspace (e.g. no filesystem access), ask the user directly:
 > "Is this a brand-new app or an existing codebase?"
@@ -297,3 +298,5 @@ When asked to create an app, always produce:
 | [design.md](design.md) | Full HIG, spacing grid, typography, colors, components, widget design |
 | [widgets.md](widgets.md) | Full WidgetKit reference: providers, families, Controls, Live Activities |
 | [writing-for-interfaces.md](writing-for-interfaces.md) | Voice, tone, copy principles, editing craft |
+
+For a full App Store Review Guidelines pass (gaps + revisions), use the `review-ios-app` skill.
